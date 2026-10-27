@@ -13,7 +13,7 @@ Le cahier des charges complet est dans [`CLAUDE.md`](CLAUDE.md).
 
 | Phase | Contenu | État |
 |---|---|---|
-| 0 | Test de lecture en arrière-plan (`public/tests/test-lecture.html`) | en attente des journaux Android / iPhone |
+| 0 | Test de lecture en arrière-plan (`tests/test-lecture.html`) | en attente des journaux Android / iPhone |
 | 1 | Socle : PWA, lecteur local, file d'attente, Media Session | fait, à valider sur Android |
 | 2 | Google Drive | à venir |
 | 3 | YouTube et aléatoire mixte | à venir |
@@ -67,7 +67,7 @@ src/
   queue/controller.ts   PlaybackController : file, aléatoire, répétition, historique, Media Session
   storage/              IndexedDB (bibliothèque, fichiers locaux, réglages)
   ui/                   composants Svelte
-public/tests/           page de test d'arrière-plan
+tests/                  pages de test sur appareil (publiées avec l'app)
 ```
 
 ## Licence

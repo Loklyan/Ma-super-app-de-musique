@@ -13,6 +13,15 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version + (sha ? ` (${sha})` : ' (dev)'))
   },
+  build: {
+    rollupOptions: {
+      // Les pages de test (dossier tests/) sont publiées à côté de l'app.
+      input: {
+        app: 'index.html',
+        'test-lecture': 'tests/test-lecture.html'
+      }
+    }
+  },
   plugins: [
     svelte(),
     VitePWA({
