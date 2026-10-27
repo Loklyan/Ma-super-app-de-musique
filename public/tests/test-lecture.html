@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test lecture arrière-plan</title>
+<style>
+:root{--bg:#0f0f10;--card:#1b1b1d;--fg:#f1f1f1;--mut:#9a9aa0;--acc:#ff4e45;--ok:#3ddc84;--warn:#ffb74d;--bad:#ff6b6b}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,sans-serif;max-width:720px;margin-inline:auto}
+h1{font-size:1.25rem;margin:0 0 4px}
+h2{font-size:1rem;margin:0 0 10px}
+section{background:var(--card);border-radius:12px;padding:14px;margin:14px 0}
+p,li{color:var(--mut);font-size:.9rem}
+ol{padding-left:20px;margin:8px 0}
+input[type=text],input[type=number]{width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#111;color:var(--fg);font-size:1rem}
+input[type=file]{width:100%;color:var(--mut);margin:6px 0}
+button{padding:10px 14px;border-radius:8px;border:0;background:#2b2b2f;color:var(--fg);font-size:.95rem;margin:6px 6px 0 0}
+button.main{background:var(--acc);color:#fff}
+audio{width:100%;margin-top:8px}
+#ytwrap{margin-top:10px;border-radius:8px;overflow:hidden;background:#000}
+#status{font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--mut);margin-top:8px}
+#log{font:12px/1.5 ui-monospace,Menlo,monospace;max-height:340px;overflow:auto;background:#0a0a0b;border-radius:8px;padding:8px;margin-top:8px}
+#log .ok{color:var(--ok)}
+#log .warn{color:var(--warn)}
+#log .bad{color:var(--bad)}
+#log .old{color:#666}
+label{display:block;color:var(--mut);font-size:.85rem;margin-top:8px}
+</style>
+</head>
+<body>
+
+<h1>Test de lecture en arrière-plan</h1>
+<p>Objectif : voir ce que fait le téléphone quand tu verrouilles l'écran ou quittes la page, avec un fichier local et une vidéo YouTube (lecteur officiel).</p>
+
+<section>
+  <h2>Mode d'emploi</h2>
+  <ol>
+    <li>Choisis un ou deux fichiers audio (section 1).</li>
+    <li>Colle un lien YouTube et clique « Charger » (section 2).</li>
+    <li>Lance la séquence (section 3), puis verrouille l'écran pendant 1 à 2 minutes.</li>
+    <li>Rouvre la page et lis le journal (section 4). Les lignes marquées ARRIÈRE-PLAN ont eu lieu écran verrouillé ou page masquée.</li>
+  </ol>
+  <p>À faire aussi en tests séparés : lecture YouTube seule puis verrouillage, lecture locale seule puis verrouillage.</p>
+</section>
+
+<section>
+  <h2>1. Fichiers audio locaux</h2>
+  <input id="files" type="file" accept="audio/*" multiple>
+  <div class="row">
+    <button id="lplay">Lire le fichier n°1</button>
+    <button id="lpause">Pause</button>
+  </div>
+  <audio id="audio" controls playsinline></audio>
+</section>
+
+<section>
+  <h2>2. Vidéo YouTube (lecteur officiel)</h2>
+  <input id="yturl" type="text" placeholder="Lien ou identifiant d'une vidéo YouTube" autocomplete="off">
+  <div>
+    <button id="ytload">Charger</button>
+    <button id="ytplay">Lire</button>
+    <button id="ytpause">Pause</button>
+  </div>
+  <div id="ytwrap"><div id="ytplayer"></div></div>
+</section>
+
+<section>
+  <h2>3. Séquence : local → YouTube → local</h2>
+  <p>Enchaîne automatiquement les trois étapes. L'étape YouTube démarre sans que tu touches l'écran : c'est le point sensible sur téléphone.</p>
+  <label for="cap">Durée de chaque étape (secondes)</label>
+  <input id="cap" type="number" min="5" value="20">
+  <button id="seqstart" class="main">Lancer la séquence</button>
+  <button id="seqstop">Arrêter</button>
+  <div id="status"></div>
+</section>
+
+<section>
+  <h2>4. Journal</h2>
+  <button id="copy">Copier le journal</button>
+  <button id="clear">Effacer</button>
+  <div id="log"></div>
+</section>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const logEl = $('log');
+  const audio = $('audio');
+  const KEY = 'testlecture-log';
+  const YT_STATES = {'-1':'non démarrée',0:'terminée',1:'lecture',2:'pause',3:'mise en mémoire',5:'prête'};
+
+  // ---------- Journal ----------
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) {}
+  saved.slice(-40).reverse().forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'old';
+    d.textContent = '(avant) ' + t;
+    logEl.appendChild(d);
+  });
+
+  function log(msg, cls) {
+    const hidden = document.visibilityState === 'hidden';
+    const text = new Date().toLocaleTimeString('fr-FR') + ' ' + (hidden ? '[ARRIÈRE-PLAN]' : '[écran]') + ' ' + msg;
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = text;
+    logEl.prepend(d);
+    saved.push(text);
+    if (saved.length > 300) saved.shift();
+    try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+  }
+
+  log('Page chargée — ' + navigator.userAgent);
+  document.addEventListener('visibilitychange', () => log('Visibilité de la page : ' + document.visibilityState, 'warn'));
+  window.addEventListener('pagehide', () => log('pagehide (page quittée ou mise en cache)', 'warn'));
+  window.addEventListener('pageshow', e => log('pageshow' + (e.persisted ? ' (restaurée depuis le cache)' : ''), 'warn'));
+
+  // ---------- Lecteur local ----------
+  let localFiles = [];
+  let idx = 0;
+  let currentUrl = null;
+  let audioPausedByUs = false;
+
+  $('files').addEventListener('change', e => {
+    localFiles = Array.from(e.target.files || []);
+    idx = 0;
+    $('lplay').textContent = 'Lire le fichier n°1';
+    log(localFiles.length + ' fichier(s) audio choisi(s)');
+  });
+
+  function setMediaSession(title) {
+    if (!('mediaSession' in navigator)) { log('Media Session non supportée par ce navigateur', 'warn'); return; }
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: title, artist: 'Test', album: 'Test lecture' });
+      navigator.mediaSession.setActionHandler('play', () => audio.play());
+      navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+      navigator.mediaSession.setActionHandler('nexttrack', () => { if (localFiles.length) playLocal((idx + 1) % localFiles.length); });
+      navigator.mediaSession.setActionHandler('previoustrack', () => { if (localFiles.length) playLocal((idx - 1 + localFiles.length) % localFiles.length); });
+    } catch (e) { log('Media Session : ' + e.message, 'warn'); }
+  }
+
+  function playLocal(i) {
+    const f = localFiles[i];
+    if (!f) { log('Aucun fichier local à cet emplacement', 'bad'); return; }
+    idx = i;
+    const support = f.type ? (audio.canPlayType(f.type) || 'non') : 'type inconnu';
+    log('Local : fichier « ' + f.name + ' » · type ' + (f.type || 'vide') + ' · ' + Math.round(f.size / 1024) + ' Ko · le navigateur dit : ' + support);
+    if (f.size === 0) log('Local : fichier VIDE (souvent un fichier iCloud/Drive pas encore téléchargé sur le téléphone)', 'bad');
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = URL.createObjectURL(f);
+    audio.src = currentUrl;
+    setMediaSession(f.name);
+    audio.play()
+      .then(() => log('Local : lecture démarrée — ' + f.name, 'ok'))
+      .catch(e => log('Local : lecture refusée (' + e.name + ')', 'bad'));
+  }
+
+  function pauseLocal() {
+    if (!audio.paused) { audioPausedByUs = true; audio.pause(); }
+  }
+
+  $('lplay').addEventListener('click', () => {
+    if (!localFiles.length) { log('Choisis d\'abord un fichier audio', 'warn'); return; }
+    playLocal(0);
+  });
+  $('lpause').addEventListener('click', () => audio.pause());
+
+  audio.addEventListener('pause', () => {
+    if (audio.ended) return;
+    if (audioPausedByUs) { audioPausedByUs = false; log('Local : pause demandée par la page'); return; }
+    if (document.hidden) log('Local : PAUSE alors que la page est masquée', 'bad');
+    else log('Local : pause');
+  });
+  audio.addEventListener('playing', () => log('Local : en lecture'));
+  audio.addEventListener('waiting', () => log('Local : attente de données', 'warn'));
+  audio.addEventListener('stalled', () => log('Local : flux bloqué', 'warn'));
+  audio.addEventListener('error', () => {
+    const er = audio.error;
+    const codes = {1: 'interrompue', 2: 'réseau', 3: 'décodage impossible', 4: 'format non supporté'};
+    log('Local : erreur de lecture — code ' + (er ? er.code + ' (' + (codes[er.code] || '?') + ')' : '?') + (er && er.message ? ' · ' + er.message : ''), 'bad');
+  });
+  audio.addEventListener('ended', () => {
+    log('Local : morceau terminé');
+    if (seq && seq[seqStep] && seq[seqStep].type === 'local') nextStep();
+  });
+
+  // ---------- Lecteur YouTube ----------
+  let yt = null;
+  let ytReady = false;
+  let ytId = null;
+  let ytPausedByUs = false;
+
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  tag.onerror = () => log('Impossible de charger l\'API YouTube (réseau ou blocage)', 'bad');
+  document.head.appendChild(tag);
+
+  if (location.protocol === 'file:') log('Page ouverte depuis un fichier (file://) : YouTube refuse souvent de fonctionner ainsi. Ouvre-la via une adresse https (GitHub Pages).', 'bad');
+  setTimeout(() => { if (!ytReady) log('Lecteur YouTube toujours pas prêt après 10 s (API non chargée, réseau ou page sans origine valide)', 'warn'); }, 10000);
+
+  window.onYouTubeIframeAPIReady = () => {
+    yt = new YT.Player('ytplayer', {
+      width: '100%',
+      height: '220',
+      playerVars: { playsinline: 1, rel: 0 },
+      events: {
+        onReady: () => { ytReady = true; log('Lecteur YouTube prêt', 'ok'); },
+        onStateChange: onYtState,
+        onError: e => log('Erreur YouTube, code ' + e.data + ' (101 ou 150 = lecture hors YouTube interdite pour cette vidéo ; 153 = page sans origine valide, par exemple ouverte depuis un fichier)', 'bad')
+      }
+    });
+  };
+
+  function onYtState(e) {
+    const s = e.data;
+    const name = YT_STATES[s] || String(s);
+    if (s === 2) {
+      if (ytPausedByUs) { ytPausedByUs = false; log('YouTube : pause demandée par la page'); return; }
+      if (document.hidden) { log('YouTube : PAUSE alors que la page est masquée', 'bad'); return; }
+    }
+    log('YouTube : ' + name, s === 1 ? 'ok' : '');
+    if (s === 0 && seq && seq[seqStep] && seq[seqStep].type === 'yt') nextStep();
+  }
+
+  function pauseYt() {
+    if (ytReady && yt && [1, 3].indexOf(yt.getPlayerState()) !== -1) { ytPausedByUs = true; yt.pauseVideo(); }
+  }
+
+  function parseYt(v) {
+    v = (v || '').trim();
+    if (/^[\w-]{11}$/.test(v)) return v;
+    try {
+      const u = new URL(v);
+      if (u.hostname.indexOf('youtu.be') !== -1) return u.pathname.slice(1, 12);
+      const id = u.searchParams.get('v');
+      if (id) return id;
+      const m = u.pathname.match(/\/(embed|shorts)\/([\w-]{11})/);
+      if (m) return m[2];
+    } catch (e) {}
+    return null;
+  }
+
+  $('ytload').addEventListener('click', () => {
+    const id = parseYt($('yturl').value);
+    if (!id) { log('Lien YouTube non reconnu', 'bad'); return; }
+    ytId = id;
+    if (!ytReady) { log('Le lecteur YouTube n\'est pas encore prêt, réessaie dans un instant', 'warn'); return; }
+    yt.cueVideoById(id);
+    log('Vidéo chargée : ' + id);
+  });
+  $('ytplay').addEventListener('click', () => {
+    if (!ytReady || !ytId) { log('Charge d\'abord une vidéo', 'warn'); return; }
+    yt.playVideo();
+  });
+  $('ytpause').addEventListener('click', () => { if (ytReady) yt.pauseVideo(); });
+
+  // ---------- Séquence ----------
+  let seq = null;
+  let seqStep = 0;
+  let stepStart = 0;
+
+  const capMs = () => Math.max(5, Number($('cap').value) || 20) * 1000;
+
+  $('seqstart').addEventListener('click', () => {
+    if (!localFiles.length) { log('Séquence impossible : choisis un fichier audio', 'bad'); return; }
+    const id = parseYt($('yturl').value) || ytId;
+    if (!id) { log('Séquence impossible : colle un lien YouTube', 'bad'); return; }
+    if (!ytReady) { log('Séquence impossible : lecteur YouTube pas prêt', 'bad'); return; }
+    ytId = id;
+    const second = localFiles.length > 1 ? 1 : 0;
+    seq = [{ type: 'local', i: 0 }, { type: 'yt' }, { type: 'local', i: second }];
+    seqStep = 0;
+    log('=== Séquence démarrée : verrouille l\'écran maintenant ===', 'ok');
+    runStep();
+  });
+
+  $('seqstop').addEventListener('click', () => {
+    seq = null;
+    stepStart = 0;
+    pauseLocal();
+    pauseYt();
+    log('=== Séquence arrêtée ===', 'warn');
+  });
+
+  function nextStep() {
+    stepStart = 0;
+    seqStep++;
+    runStep();
+  }
+
+  function runStep() {
+    const s = seq && seq[seqStep];
+    if (!s) {
+      if (seq) log('=== Séquence terminée ===', 'ok');
+      seq = null;
+      stepStart = 0;
+      return;
+    }
+    stepStart = Date.now();
+    log('Étape ' + (seqStep + 1) + '/' + seq.length + ' : ' + (s.type === 'local' ? 'fichier local n°' + (s.i + 1) : 'passage à YouTube'));
+    if (s.type === 'local') {
+      pauseYt();
+      playLocal(s.i);
+    } else {
+      pauseLocal();
+      yt.loadVideoById(ytId);
+      const myStep = seqStep;
+      setTimeout(() => {
+        if (!seq || seqStep !== myStep) return;
+        const st = yt.getPlayerState();
+        if (st === 1) log('→ YouTube a démarré tout seul', 'ok');
+        else log('→ YouTube n\'a PAS démarré tout seul (état : ' + (YT_STATES[st] || st) + ')', 'bad');
+      }, 6000);
+    }
+  }
+
+  // ---------- Battement : détecte le gel de JavaScript ----------
+  let lastTick = Date.now();
+  function updateStatus() {
+    const ytS = (ytReady && yt && yt.getPlayerState) ? (YT_STATES[yt.getPlayerState()] || '?') : 'pas prêt';
+    $('status').textContent = 'Page : ' + document.visibilityState +
+      ' · YouTube : ' + ytS +
+      ' · Local : ' + (audio.paused ? 'pause' : 'lecture') +
+      (seq ? ' · Séquence : étape ' + (seqStep + 1) + '/' + seq.length : '');
+  }
+  setInterval(() => {
+    const now = Date.now();
+    const gap = now - lastTick;
+    lastTick = now;
+    if (gap > 3000) log('JavaScript suspendu environ ' + Math.round(gap / 1000) + ' s (page gelée ?)', 'warn');
+    if (seq && stepStart && now - stepStart >= capMs()) {
+      log('Durée de l\'étape atteinte');
+      nextStep();
+    }
+    updateStatus();
+  }, 1000);
+
+  // ---------- Boutons du journal ----------
+  $('copy').addEventListener('click', () => {
+    try { navigator.clipboard.writeText(saved.join('\n')).then(() => log('Journal copié', 'ok')); }
+    catch (e) { log('Copie impossible sur ce navigateur', 'warn'); }
+  });
+  $('clear').addEventListener('click', () => {
+    saved = [];
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    logEl.innerHTML = '';
+  });
+})();
+</script>
+</body>
+</html>
