@@ -123,6 +123,11 @@ label{display:block;color:var(--mut);font-size:.85rem;margin-top:8px}
   let currentUrl = null;
   let audioPausedByUs = false;
 
+  // Sur iPhone/iPad, le filtre « accept » grise des MP3 valides : on le retire.
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    $('files').removeAttribute('accept');
+  }
+
   $('files').addEventListener('change', e => {
     localFiles = Array.from(e.target.files || []);
     idx = 0;
